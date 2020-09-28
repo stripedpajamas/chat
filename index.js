@@ -1,42 +1,77 @@
-const http = require('http')
-const got = require('got')
-const readline = require('readline')
+const Fastify = require('fastify')
+const net = require('net')
 
-// hosts includes other people and myself
-const hosts = [
-  { id: 'pete', url: 'http://localhost:6969' },
-  { id: 'pete2', url: 'http://localhost:6970' },
-]
+const fastify = Fastify({ logger: true })
+const messages = []
+const clients = []
+const dateTimeOpts = {
+  month: 'numeric',
+  year: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+  hour12: false
+}
 
-const self = process.argv[2] === '6969' ? 'pete' : 'pete2'
-
-// react to me sending others msgs
-process.stdin.setEncoding('utf-8')
-process.stdin.on('data', async (chunk) => {
-  if (!chunk.length) { return }
-  await Promise.all(hosts.map(async ({ url }) => {
-    await got.post(url, {
-      json: { id: self, msg: chunk }
-    })
-  }))
+// schemas
+fastify.addSchema({
+  $id: 'chaz',
+  type: 'object',
+  properties: {
+    message: {
+      type: 'object',
+      properties: {
+        fromId: { type: 'string' },
+        timestamp: { type: 'number' },
+        text: { type: 'string' }
+      }
+    }
+  }
 })
-process.stdin.resume()
 
-// listen for others sending me msgs
-http.createServer((req, res) => {
-  let data = []
-  req.on('data', (chunk) => {
-    data.push(chunk)
-  })
-  req.on('end', () => {
-    let msg
-    try {
-      msg = JSON.parse(data)
-      process.stdout.write(`${msg.id} > ${msg.msg}`)
-    } catch (e) {}
-  })
-  res.end()
-}).listen(process.argv[2], () => {
-  console.error('Listening on port %d', process.argv[2])
+// routes
+fastify.get('/messages', (req, reply) => {
+  reply.send(messages)
 })
- 
+fastify.post('/messages', {
+  schema: {
+    body: {
+      type: 'object',
+      required: ['message'],
+      properties: {
+        message: { $ref: 'chaz#/properties/message' }
+      }
+    }
+  },
+  handler (req, reply) {
+    messages.push(req.body.message)
+    clients.forEach(({ socket }) => writeToClient(socket, req.body.message))
+    reply.send({ ok: 1 })
+  },
+})
+fastify.listen(process.argv[2], '0.0.0.0')
+
+// run client facing socket
+const server = net.createServer((socket) => {
+  console.error('New socket connection')
+  // send history
+  messages.forEach((msg) => writeToClient(socket, msg))
+
+  // prepare for other messages
+  const id = Math.random().toString(36).slice(2)
+  clients.push({ id, socket })
+
+  socket.on('end', () => {
+    clients.splice(clients.findIndex(({ id: existingId }) => existingId === id), 1)
+    console.error('Client %s disconnected', id)
+  })
+}).listen(6970, () => {
+  console.error('Socket server listening on 6970')
+})
+
+function writeToClient (socket, msg) {
+  const { fromId, timestamp, text } = msg
+  const time = new Intl.DateTimeFormat('default', dateTimeOpts).format(new Date(timestamp))
+  socket.write(`(${time}) ${fromId} > ${text}\n`)
+}

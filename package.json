@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
-    "got": "^11.7.0"
+    "fastify": "^3.4.1"
   },
   "devDependencies": {},
   "scripts": {
