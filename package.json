@@ -4,11 +4,19 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
-    "fastify": "^3.4.1"
+    "fastify": "^3.4.1",
+    "got": "^11.7.0"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "pino-pretty": "^4.2.1"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "0": "node server.js 0 | pino-pretty",
+    "1": "node server.js 1 | pino-pretty",
+    "query": "while true; echo \"from 0:\" (curl -s localhost:6969/value); echo \"from 1:\" (curl -s localhost:6970/value); sleep 1; end",
+    "inc": "while true; curl -X POST localhost:(random 6969 6970)/inc; sleep 0.2; end",
+    "register0": "curl -X POST localhost:6970/register -H 'Content-Type: application/json' -d '{\"address\":\"http://localhost:6969\"}'",
+    "register1": "curl -X POST localhost:6969/register -H 'Content-Type: application/json' -d '{\"address\":\"http://localhost:6970\"}'"
   },
   "keywords": [],
   "author": "",
