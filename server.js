@@ -1,27 +1,30 @@
 const Fastify = require('fastify')
 const got = require('got')
-const Counter = require('./counter')
+const MsgStore = require('./msgstore')
 const config = require('./config')(process.argv[2])
 
 const fastify = Fastify({ logger: true })
-fastify.decorate('state', new Counter(config.id))
+fastify.decorate('state', new MsgStore())
 fastify.decorate('nodes', new Set())
 
 // get the current value
-fastify.get('/value', function (req, reply) {
-  reply.send({ value: this.state.value() })
+fastify.get('/msglist', function (req, reply) {
+  const msgList = this.state.allMsgs()
+  reply.send({ msglist: [...msgList.values()] })
 })
 
-// increment the value
-fastify.post('/inc', function (req, reply) {
-  this.state.inc()
+// add a msg
+fastify.post('/add', function (req, reply) {
+  const { msg } = req.body
+  const timestamp = Date.now()
+  this.state.add({ timestamp, ...msg })
   reply.send({ ok: 1 })
 })
 
-// sync the value with another node
+// sync state with another node
 fastify.post('/sync', function (req, reply) {
-  const { state } = req.body
-  this.state.merge(state)
+  const { deltas } = req.body
+  this.state.mergeSerializedDeltas(deltas)
   reply.send({ ok: 1 })
 })
 
@@ -34,10 +37,13 @@ fastify.post('/register', function (req, reply) {
 
 // every 5s, sync with known nodes
 setInterval(() => {
-  for (const node of fastify.nodes) {
-    got.post(`${node}/sync`, {
-      json: { state: fastify.state.getState() }
-    }).catch((e) => fastify.log.error(e))
+  if (fastify.state.getDeltas().size) {
+    const deltas = fastify.state.getSerializedDeltas()
+    for (const node of fastify.nodes) {
+      got.post(`${node}/sync`, { json: { deltas } })
+        .then(() => fastify.state.clearDeltas())
+        .catch((e) => fastify.log.error(e))
+    }
   }
 }, 5000)
 
