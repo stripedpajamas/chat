@@ -50,7 +50,7 @@ LogMap {
 
 // map of content hashes to content
 Log {
-  [hash]: [content: Content],
+  [hash]: [{ content: Content, signature, hash }],
   ...
 }
 
