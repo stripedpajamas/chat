@@ -3,7 +3,7 @@
 1. A Keypair is a Public Key and Private Key.
 1. Each Node maintains a single Datastore that is persisted to disk and read on bootup.
 1. The Datastore contains separate stores within it: Log Set and Log Map
-1. The Log Set is conceptually a Last-Write-Wins Add/Remove Set. Internally it consists of two Sets, an Add Set and a Remove Set. The elements of both Sets are tuples `{ el, ts }`. To add an element to the Add Set, add the tuple `{ el, ts: Date.now() }`. To add an element to the Remove Set, add the tuple `{ el, ts: Date.now() }`. To determine if an element is in the Log Set, check if it is in the Add Set and not in the Remove Set with a higher timstamp.
+1. The Log Set represents the set of people whose messages will be displayed in the client. This set is not replicated between nodes.
 1. The Log Set contains Log IDs. The Log IDs are Public Keys. If the Log Set contains a Log ID, client applications should display that Log's content.
 1. The Log Map maps Log IDs to actual Logs.
 1. A Log is modeled as a Grow-only Set of Entries.
