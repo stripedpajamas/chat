@@ -1,17 +1,13 @@
-const { Log, LogMemoryDriver } = require('./log')
+const { InMemoryLogStore } = require('./logstore')
+// const { Log, LogMemoryDriver } = require('./log')
 const keypair = require('./keypair')
 const { createEntry, verifyEntry } = require('./entry')
 
 const keys = keypair.generate()
 
-const memoryDriver = new LogMemoryDriver()
-const log = new Log(memoryDriver)
+const logstore = new InMemoryLogStore()
 
-const content = {
-  timestamp: Date.now(),
-  channel: null,
-  text: 'hello world'
-}
+const content = msg('hello world')
 
 console.error({ content })
 
@@ -23,7 +19,16 @@ const { valid, reason } = verifyEntry(keys.pk, entry)
 
 console.error({ valid })
 
-log.add(entry)
+logstore.addEntry(keys.pk, entry)
 
-console.error(JSON.stringify(log))
+console.error(logstore.entries())
 
+function msg (text) {
+  return {
+    timestamp: Date.now(),
+    channel: null,
+    text
+  }
+}
+
+module.exports = { msg, keys, logstore }

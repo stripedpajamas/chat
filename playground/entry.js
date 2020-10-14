@@ -1,5 +1,4 @@
 const sodium = require('sodium-native')
-const base32 = require('base32-encoding')
 
 module.exports = {
   createEntry,
@@ -12,7 +11,7 @@ function sign (sk, contentString) {
 
   sodium.crypto_sign_detached(sig, contentBuf, sk)
 
-  return base32.stringify(sig)
+  return sig.toString('base64')
 }
 
 function verify (pk, signature, contentString) {
@@ -28,26 +27,29 @@ function hash (contentString) {
 
   sodium.crypto_generichash(out, contentBuf)
 
-  return base32.stringify(out)
+  return out.toString('base64')
 }
 
+// expecting non-binary inputs
 function createEntry (sk, content) {
   const { channel, timestamp, text } = content
   const contentString = JSON.stringify([channel, timestamp, text])
+  const secretKey = Buffer.from(sk, 'base64')
 
   const hashStr = hash(contentString)
-  const signature = sign(sk, contentString)
+  const signature = sign(secretKey, contentString)
 
   return { content, signature, hash: hashStr }
 }
 
-// expecting non-binary entry as input (all strings); expecting binary pk
+// expecting non-binary inputs
 function verifyEntry (pk, { content, signature: sigStr, hash: inputHash }) {
   const { channel, timestamp, text } = content
   const contentString = JSON.stringify([channel, timestamp, text])
-  const signature = base32.parse(sigStr)
+  const signature = Buffer.from(sigStr, 'base64')
+  const publicKey = Buffer.from(pk, 'base64')
 
-  if (!verify(pk, signature, contentString)) {
+  if (!verify(publicKey, signature, contentString)) {
     return { valid: false, reason: 'invalid signature' }
   }
   if (hash(contentString) !== inputHash) {
