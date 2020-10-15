@@ -37,6 +37,14 @@ class InMemoryLogStore {
     }
     return entries
   }
+
+  toJSON () {
+    const logs = {}
+    for (const [id, log] of this.data.entries()) {
+      logs[id] = log.toJSON()
+    }
+    return logs
+  }
 }
 
 // Represents a single in-memory Log
