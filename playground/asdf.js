@@ -1,25 +1,18 @@
-const keypair = require('./keypair')
-const { InMemoryLogStore } = require('./logstore')
-const { createEntry } = require('./entry')
+const Node = require('./node')
 
-function Node () {
-  const keys = keypair.generate()
-  const logstore = new InMemoryLogStore()
+// testing
+const a = new Node({})
+const b = new Node({})
 
-  console.error('Initialized node id %s', keys.pk)
-  return {
-    newMsg (text) {
-      const entry = createEntry(keys.sk, {
-        timestamp: Date.now(),
-        channel: null,
-        text
-      })
-      logstore.addEntry(keys.pk, entry)
-      console.error('Added msg to node %s (%s)', keys.pk, entry.content.text)
-    },
-    keys,
-    logstore,
-  }
-}
+a.addLogId(b.id())
+b.addLogId(a.id())
 
-module.exports = Node
+a.addMsg({ text: 'hello world from a!' })
+b.addMsg({ text: 'hello world from b!' })
+a.addMsg({ text: 'happy birthday!' })
+
+a.db.mergeSyncData(b.db.getSyncData())
+b.db.mergeSyncData(a.db.getSyncData())
+
+console.error('a:', a.getMessages()) // all 3 msgs
+console.error('b:', b.getMessages()) // all 3 msgs

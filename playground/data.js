@@ -1,14 +1,53 @@
 const { verifyEntry } = require('./entry')
 
+// DB contains the set of stored log IDs, as well as the log store
+class InMemoryDB {
+  constructor () {
+    this.logset = new Set()
+
+    this.logstore = new InMemoryLogStore({
+      logFactory: () => new InMemoryLog(),
+      shouldStoreLog: (logId) => this.logset.has(logId)
+    })
+  }
+
+  addLogId (id) {
+    this.logset.add(id)
+  }
+
+  addEntry (id, entry) {
+    this.logstore.addEntry(id, entry)
+  }
+
+  entries () {
+    return this.logstore.entries()
+  }
+
+  getSyncData () {
+    return JSON.stringify(this.logstore)
+  }
+
+  mergeSyncData (data) {
+    const parsed = JSON.parse(data)
+    this.logstore.merge(parsed)
+  }
+}
+
 // Log Store is a replicated k/v store of logs
 class InMemoryLogStore {
-  constructor ({ logFactory } = {}) {
+  constructor ({ logFactory, shouldStoreLog } = {}) {
     this.data = new Map()
 
     if (logFactory) {
       this.logFactory = logFactory
     } else {
       this.logFactory = () => new InMemoryLog()
+    }
+
+    if (shouldStoreLog) {
+      this.shouldStoreLog = shouldStoreLog
+    } else {
+      this.shouldStoreLog = () => true
     }
   }
 
@@ -18,6 +57,8 @@ class InMemoryLogStore {
   }
 
   addEntry (logId, entry) {
+    if (!this.shouldStoreLog(logId)) return
+
     const log = this.data.has(logId)? this.data.get(logId) : this.newLog(logId)
 
     if (log.has(entry)) return
@@ -85,6 +126,8 @@ class InMemoryLog {
 }
 
 module.exports = {
-  InMemoryLogStore
+  InMemoryDB,
+  InMemoryLogStore,
+  InMemoryLog
 }
 
