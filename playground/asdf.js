@@ -1,34 +1,25 @@
-const { InMemoryLogStore } = require('./logstore')
-// const { Log, LogMemoryDriver } = require('./log')
 const keypair = require('./keypair')
-const { createEntry, verifyEntry } = require('./entry')
+const { InMemoryLogStore } = require('./logstore')
+const { createEntry } = require('./entry')
 
-const keys = keypair.generate()
+function Node () {
+  const keys = keypair.generate()
+  const logstore = new InMemoryLogStore()
 
-const logstore = new InMemoryLogStore()
-
-const content = msg('hello world')
-
-console.error({ content })
-
-const entry = createEntry(keys.sk, content)
-
-console.error({ entry })
-
-const { valid, reason } = verifyEntry(keys.pk, entry)
-
-console.error({ valid })
-
-logstore.addEntry(keys.pk, entry)
-
-console.error(logstore.entries())
-
-function msg (text) {
+  console.error('Initialized node id %s', keys.pk)
   return {
-    timestamp: Date.now(),
-    channel: null,
-    text
+    newMsg (text) {
+      const entry = createEntry(keys.sk, {
+        timestamp: Date.now(),
+        channel: null,
+        text
+      })
+      logstore.addEntry(keys.pk, entry)
+      console.error('Added msg to node %s (%s)', keys.pk, entry.content.text)
+    },
+    keys,
+    logstore,
   }
 }
 
-module.exports = { msg, keys, logstore }
+module.exports = Node

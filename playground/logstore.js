@@ -19,6 +19,8 @@ class InMemoryLogStore {
 
   addEntry (logId, entry) {
     const log = this.data.has(logId)? this.data.get(logId) : this.newLog(logId)
+
+    if (log.has(entry)) return
     
     const { valid, reason } = verifyEntry(logId, entry)
     if (!valid) {
@@ -36,6 +38,17 @@ class InMemoryLogStore {
       }
     }
     return entries
+  }
+
+  // given another logstore, merge it into this one
+  // this method expects JSON.parse(JSON.stringify(logstore))
+  merge (logstore) {
+    for (const id in logstore) {
+      const log = logstore[id]
+      for (const entry of log) {
+        this.addEntry(id, entry)
+      }
+    }
   }
 
   toJSON () {
@@ -56,6 +69,10 @@ class InMemoryLog {
   add (entry) {
     const { hash } = entry
     this.data.set(hash, entry)
+  }
+
+  has (entry) {
+    return this.data.has(entry.hash)
   }
 
   entries () {
