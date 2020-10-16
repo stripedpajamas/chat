@@ -34,6 +34,6 @@ function createRequestSignature ({ body, sk, ts = Date.now(), hex = false }) {
 }
 
 module.exports = {
-  createRequest,
+  createRequestSignature,
   validateRequest
 }

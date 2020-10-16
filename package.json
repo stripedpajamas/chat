@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "conf": "^7.1.2",
     "fastify": "^3.4.1",
     "got": "^11.7.0"
   },

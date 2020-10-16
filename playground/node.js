@@ -1,4 +1,3 @@
-
 const pino = require('pino')
 const keypair = require('./keypair')
 const { InMemoryDB } = require('./data')
@@ -6,7 +5,7 @@ const { createEntry } = require('./entry')
 
 class Node {
   constructor ({ keys, db, logger }) {
-    this.keys = keys || keypair.generate()
+    this.keys = keys || keypair.getOrCreateKeypair()
     this.db = db || (new InMemoryDB())
     this.logger = logger || pino()
 
