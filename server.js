@@ -1,5 +1,6 @@
 const Fastify = require('fastify')
 const got = require('got')
+const { validateRequest } = require('./auth.js')
 const Node = require('./playground/node.js')
 const config = require('./config.js')(process.argv[2]) // node server.js <id>
 
@@ -12,8 +13,10 @@ fastify.get('/messages', function (req, reply) {
 })
 
 fastify.post('/messages', {
-  preValidation: function (req, reply, done) {
-    // TODO ensure only self can hit this route
+  preHandler: function (req, reply, done) {
+    if (!validateRequest(req, this.node.keys.sk)) {
+      return reply.code(401).send({ ok: 0 })
+    }
     done()
   },
   handler: function (req, reply) {
