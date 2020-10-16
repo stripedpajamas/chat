@@ -8,8 +8,16 @@ const fastify = Fastify({ logger: true })
 fastify.decorate('node', new Node({ logger: fastify.log }))
 fastify.decorate('nodes', new Set())
 
-fastify.get('/messages', function (req, reply) {
-  reply.send({ messages: this.node.getMessages() })
+fastify.get('/messages', {
+  preHandler: function (req, reply, done) {
+    if (!validateRequest(req, this.node.keys.sk)) {
+      return reply.code(401).send({ ok: 0 })
+    }
+    done()
+  },
+  handler: function (req, reply) {
+    reply.send({ messages: this.node.getMessages() })
+  }
 })
 
 fastify.post('/messages', {
