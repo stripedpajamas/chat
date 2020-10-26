@@ -23,6 +23,10 @@ class Node {
     this.db.addLogId(id)
   }
 
+  hasLogId (id) {
+    return this.db.hasLogId(id)
+  }
+
   addMsg ({ text, channel }) {
     const entry = createEntry(this.keys.sk, { timestamp: Date.now(), channel, text })
     this.db.addEntry(this.id(), entry)

@@ -15,6 +15,10 @@ class InMemoryDB {
     this.logset.add(id)
   }
 
+  hasLogId (id) {
+    return this.logset.has(id)
+  }
+
   addEntry (id, entry) {
     this.logstore.addEntry(id, entry)
   }
