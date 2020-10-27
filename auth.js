@@ -22,7 +22,6 @@ function validateRequest (req, pk) {
 // assumes sk is a string
 function createRequestSignature ({ body, sk, ts = Date.now() }) {
   const payload = payloadFromBody({ body, ts })
-  console.error({ payload })
 
   const signature = sign(sk, payload).toString('hex')
 
