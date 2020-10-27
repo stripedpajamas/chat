@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte'
+	import { onMount, onDestroy } from 'svelte'
 
 	const DATE_TIME_OPTS = {
 		month: 'numeric',
@@ -20,7 +20,7 @@
 	}
 
 	function handleSendMsg () {
-		return fetch('http://localhost:7000/messages', {
+		return fetch('/messages', {
 			method: 'post',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ text: message })
@@ -34,7 +34,7 @@
 	}
 
 	async function updateMessages () {
-		messages = await fetch('http://localhost:7000/messages')
+		messages = await fetch('/messages')
 			.then((res) => res.json())
 			.then((data) => {
 				const { messages: updatedMessages } = data
@@ -58,9 +58,18 @@
 			})
 	}
 
+	const interval = setInterval(() => {
+		updateMessages()
+	}, 500)
+
 	onMount(() => {
 		return updateMessages()
 	})
+
+	onDestroy(() => {
+		clearInterval(interval)
+	})
+
 </script>
 
 <main>
