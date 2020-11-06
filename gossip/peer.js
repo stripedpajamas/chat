@@ -13,3 +13,5 @@ class Peer {
     this.feeds.set(id, new Feed({ id }))
   }
 }
+
+module.exports = { Peer }

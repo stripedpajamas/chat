@@ -19,3 +19,5 @@ class MemoryLog {
     })
   }
 }
+
+module.exports = { Feed }
