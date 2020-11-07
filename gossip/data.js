@@ -18,6 +18,10 @@ class MemoryLog {
       content,
     })
   }
+
+  getData () {
+    return this.data
+  }
 }
 
 module.exports = { Feed }
