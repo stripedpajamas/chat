@@ -3,6 +3,10 @@ class Feed {
     this.id = id
     this.log = log || (new MemoryLog({ id }))
   }
+
+  append (content) {
+    this.log.append(content)
+  }
 }
 
 class MemoryLog {

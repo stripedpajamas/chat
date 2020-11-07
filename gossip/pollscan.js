@@ -95,13 +95,22 @@ class Connection {
 
         const log = this.local.feeds.get(id).log.getData()
         const payload = cbor.encode(log)
-        this.socket.write(`DATA ${payload.length}\n`)
-        this.socket.end(payload)
+        const payloadLen = Buffer.alloc(4)
+        payloadLen.writeIntBE(payload.length, 0, 4)
+
+        const prelude = Buffer.concat([
+          Buffer.from('DATA '),
+          payloadLen,
+          Buffer.from('\n')
+        ])
+
+        this.socket.write(prelude) // prepare client for payload
+        this.socket.end(payload) // send it
 
         break
       }
       case 'DATA': {
-        this.dataLeft = data.readIntBE(5, data.indexOf(0x20) - 5)
+        this.dataLeft = data.readIntBE(5, 4)
         break
       }
       default: {
