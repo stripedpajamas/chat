@@ -7,6 +7,10 @@ class Feed {
   append (content) {
     this.log.append(content)
   }
+
+  getLatestSeq () {
+    return this.log.getLatestSeq()
+  }
 }
 
 class MemoryLog {
@@ -25,6 +29,11 @@ class MemoryLog {
 
   getData () {
     return this.data
+  }
+
+  getLatestSeq () {
+    if (!this.data.length) return 0
+    return this.data.length - 1
   }
 }
 
