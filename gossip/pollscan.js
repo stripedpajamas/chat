@@ -20,25 +20,23 @@ setInterval(() => {
   myFeed.append(`hello from ${config.id} at ${new Date()}`)
 }, Math.random() * 1000 + 1000)
 
-// for testing, randomly call peers and ask
+// for testing, call peers and ask
 // for the feeds i follow
-if (config.id === 'pete') {
-  setTimeout(() => {
-    for (const peer of config.peers) {
-      const { address, port } = peer
-      logger.info({ address, port }, 'Attempting connection')
+setInterval(() => {
+  for (const peer of config.peers) {
+    const { address, port } = peer
+    logger.info(`Attempting connection to ${address}:${port}`)
 
-      const conn = new Connection({
-        local,
-        socket: net.connect(port, address),
-        initiateHello: true
-      })
+    const conn = new Connection({
+      local,
+      socket: net.connect(port, address),
+      initiateHello: true
+    })
 
-      conn.sync(config.otherId)
-      conn.end()
-    }
-  }, Math.random() * 5000 + 3000)
-}
+    conn.sync(config.otherId)
+    conn.end()
+  }
+}, 10000)
 /* end testing */
 
 const server = net.createServer()
