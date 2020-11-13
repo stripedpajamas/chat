@@ -28,16 +28,16 @@ const protocol = {
 }
 
 function sync () {
-  // choose a random peer from "known peers" (currently hard coded seed in config file)
-  const peer = config.peers[Math.floor(Math.random() * config.peers.length)]
-  const { port, host, id } = peer
+  for (const peer of config.peers) {
+    const { port, host, id } = peer
 
-  const conn = handleConnection(jsonStream(net.connect(port, host)))
+    const conn = handleConnection(jsonStream(net.connect(port, host)))
 
-  // request from the peer their own data
-  logger.info(`Requesting sync of ${id}`)
-  conn.syncFeed(id)
-  conn.close()
+    // request from the peer their own data
+    logger.info(`Requesting sync of ${id}`)
+    conn.syncFeed(id)
+    conn.close()
+  }
 }
 
 setInterval(sync, 10000)
@@ -68,7 +68,7 @@ function handleConnection (conn) {
   conn.on('close', () => { logger.info('Connection closed') })
   conn.on('data', (msg) => {
     switch (msg[0]) {
-      case HANDSHAKE_MSG: {} // handshake msg
+      case HANDSHAKE_MSG: {} // handshake msg (TODO do it)
       case DATA_REQ_MSG: { // authenticated request msg
         const [type, msgId, method, params] = msg
         switch (method) {
