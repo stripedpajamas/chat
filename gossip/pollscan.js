@@ -7,37 +7,8 @@ const jsonStream = require('duplex-json-stream')
 const logger = require('pino')()
 const { Peer } = require('./peer')
 
-/* for testing */
 const config = require('./config')(process.argv[2])
 const local = new Peer({ id: config.id })
-
-logger.info(`i am ${config.id}; subscribing to ${config.otherId}`)
-local.subscribeToFeed({ id: config.otherId })
-const myFeed = local.feeds.get(config.id)
-
-// for testing, add stuff to my log
-setInterval(() => {
-  myFeed.append(`hello from ${config.id} at ${new Date()}`)
-}, Math.random() * 1000 + 1000)
-
-// for testing, call peers and ask
-// for the feeds i follow
-setInterval(() => {
-  for (const peer of config.peers) {
-    const { address, port } = peer
-    logger.info(`Attempting connection to ${address}:${port}`)
-
-    const conn = new Connection({
-      local,
-      socket: net.connect(port, address),
-      initiateHello: true
-    })
-
-    conn.sync(config.otherId)
-    conn.end()
-  }
-}, 10000)
-/* end testing */
 
 const server = net.createServer()
 server.listen(config.port, () => {
@@ -50,15 +21,35 @@ const protocol = {
   DATA_RES_MSG: 2,
   METHODS: {
     SYNC: 'sync',
-    POST: 'post'
+    POST: 'post',
+    DUMP: 'dump',
+    FOLLOW: 'follow',
   }
 }
 
-server.on('connection', (socket) => {
-  const conn = jsonStream(socket)
+function sync () {
+  // choose a random peer from "known peers" (currently hard coded seed in config file)
+  const peer = config.peers[Math.floor(Math.random() * config.peers.length)]
+  const { port, host, id } = peer
 
+  const conn = handleConnection(jsonStream(net.connect(port, host)))
+
+  // request from the peer their own data
+  logger.info(`Requesting sync of ${id}`)
+  conn.syncFeed(id)
+  conn.close()
+}
+
+setInterval(sync, 10000)
+
+server.on('connection', (socket) => {
+  logger.info('Incoming connection')
+  handleConnection(jsonStream(socket))
+})
+
+function handleConnection (conn) {
   const { HANDSHAKE_MSG, DATA_REQ_MSG, DATA_RES_MSG, METHODS } = protocol
-  const { SYNC, POST } = METHODS
+  const { SYNC, POST, DUMP, FOLLOW } = METHODS
 
   function errorResponse (msgId, err) {
     return [DATA_RES_MSG, msgId, err, null]
@@ -68,8 +59,15 @@ server.on('connection', (socket) => {
     return [DATA_RES_MSG, msgId, null, data]
   }
 
+  const reqs = new Map()
+
+  conn.on('error', (e) => {
+    reqs.clear()
+    logger.warn(e)
+  }) 
+  conn.on('close', () => { logger.info('Connection closed') })
   conn.on('data', (msg) => {
-    switch (msg.type) {
+    switch (msg[0]) {
       case HANDSHAKE_MSG: {} // handshake msg
       case DATA_REQ_MSG: { // authenticated request msg
         const [type, msgId, method, params] = msg
@@ -77,6 +75,7 @@ server.on('connection', (socket) => {
           case SYNC: {
             // send a log to requester
             const [feedId] = params
+            logger.info(`Sync requested for ${feedId}`)
             if (!local.feeds.has(feedId)) {
               // we don't have the feed
               conn.write(errorResponse(msgId, 'Feed not found'))
@@ -87,17 +86,94 @@ server.on('connection', (socket) => {
             conn.write(dataResponse(msgId, log))
             break
           }
-          case 'post': {
+          case POST: {
             // append to local log
+            const [post] = params
+            local.feeds.get(local.id).append(post)
+            conn.write(dataResponse(msgId, { success: 1 }))
+            break
+          }
+          case FOLLOW: {
+            // subscribe to another id
+            const [feedId] = params
+            local.subscribeToFeed({ id: feedId })
+            conn.write(dataResponse(msgId, { success: 1 }))
+            break
+          }
+          case DUMP: {
+            // dump everything (for testing)
+            conn.write(dataResponse(msgId, [...local.feeds.entries()]))
             break
           }
           default: {
             break
           }
         }
+        break
       } 
-      case DATA_RES_MSG: {} // authenticated response to a req
+      case DATA_RES_MSG: { // authenticated response to a req
+        const [type, msgId, err, data] = msg
+        if (err) {
+          logger.error(`Error in response to msg ${msgId}`, err)
+          break
+        }
+        if (!reqs.has(msgId)) {
+          logger.error(`Receieved a response to a msg we don't know about (${msgId})`)
+          break
+        }
+
+        const { method, params } = reqs.get(msgId)
+        reqs.delete(msgId)
+
+        switch (method) {
+          case SYNC: {
+            const [id] = params
+            const log = data
+            const feed = local.feeds.get(id)
+            if (!feed) {
+              logger.warn(`Received data that we do not care about (feed id: ${id})`)
+              break
+            }
+
+            logger.info(`Received ${log.length} entries for feed ${id}`)
+            log.slice(feed.getLatestSeq()).forEach((newEntry) => {
+              logger.info(`Adding entry to ${id}'s log`)
+              const { content } = newEntry
+              feed.append(content)
+            })
+            break
+          }
+          default: {
+            break
+          }
+        }
+        break
+      }
     }
   })
-})
 
+  function close (retriesRemaining = 5) {
+    if (reqs.size) {
+      logger.warn('Requests open on connection; waiting 1s and then trying again')
+      setTimeout(() => close(retriesRemaining - 1), 1000)
+      return
+    }
+
+    reqs.clear()
+    conn.end()
+  }
+
+  function syncFeed (id) {
+    const method = SYNC
+    const params = [id]
+    const msgId = Math.random().toString(36).slice(2)
+    reqs.set(msgId, { method, params })
+
+    conn.write([DATA_REQ_MSG, msgId, method, params])
+  }
+
+  return {
+    syncFeed,
+    close
+  }
+}

@@ -9,7 +9,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "cbor": "^5.1.0",
     "duplex-json-stream": "^1.0.1",
     "pino": "^6.7.0"
   },

@@ -32,8 +32,7 @@ class MemoryLog {
   }
 
   getLatestSeq () {
-    if (!this.data.length) return 0
-    return this.data.length - 1
+    return this.data.length
   }
 }
 
