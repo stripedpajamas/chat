@@ -10,7 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "duplex-json-stream": "^1.0.1",
-    "pino": "^6.7.0"
+    "pino": "^6.7.0",
+    "sodium-native": "^3.2.0"
   },
   "devDependencies": {
     "pino-pretty": "^4.3.0"
