@@ -175,6 +175,40 @@ function main (address, port, remotePk) {
   )
 
   conn.on('authenticated', ({ local, remote }) => {
+    // key = hash(hash(hash(netId || ss0 || ss1 || ss2)) || remotePk)
+    const sendKey = Buffer.alloc(sodium.crypto_generichash_BYTES)
+    sodium.crypto_generichash(key, Buffer.concat([
+      netId,
+      local.sharedSecret0,
+      local.sharedSecret1,
+      local.sharedSecret2
+    ]))
+    sodium.crypto_generichash(key, key)
+    sodium.crypto_generichash(key, Buffer.concat([
+      key,
+      remote.public
+    ]))
+    const receiveKey = Buffer.alloc(sodium.crypto_generichash_BYTES)
+    sodium.crypto_generichash(key, Buffer.concat([
+      netId,
+      local.sharedSecret0,
+      local.sharedSecret1,
+      local.sharedSecret2
+    ]))
+    sodium.crypto_generichash(key, key)
+    sodium.crypto_generichash(key, Buffer.concat([
+      key,
+      local.public
+    ]))
+
+    let sendNonce = Buffer.alloc(sodium.crypto_auth_BYTES)
+    sodium.crypto_auth(sendNonce, remote.ephPk, netId)
+    sendNonce = sendNonce.slice(0, 24)
+    let receiveNonce = Buffer.alloc(sodium.crypto_auth_BYTES)
+    sodium.crypto_auth(receiveNonce, local.ephPk, netId)
+    receiveNonce = receiveNonce.slice(0, 24)
+
+
     conn.write('hello world hello world')
   })
 }

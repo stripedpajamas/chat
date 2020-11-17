@@ -146,6 +146,7 @@ function serverHandshake (conn) {
           conn.write(payload)
 
           authenticated = true
+          conn.emit('authenticated', { local, remote })
           break
         }
       }
@@ -160,6 +161,8 @@ function serverHandshake (conn) {
 
   return stream
 }
+
+
 
 const server = net.createServer()
 
