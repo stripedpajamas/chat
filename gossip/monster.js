@@ -28,7 +28,7 @@ function Protocol (socket, init, opts) {
       sharedSecret2: Buffer.alloc(sodium.crypto_scalarmult_BYTES)
     },
     remote: {
-      public: null,
+      public: init ? opts.remote.public : null,
       ephPk: null,
       sig: null
     }
@@ -36,21 +36,28 @@ function Protocol (socket, init, opts) {
   const authState = {}
 
   // init ephemeral keys for this session
-  sodium.crypto_box_keypair(ephPk, ephSk)
+  sodium.crypto_box_keypair(handshakeState.local.ephPk, handshakeState.local.ephSk)
   handshakeState.zeroNonce.fill(0)
 
+  // if we are the initiator, send first message
+  if (init) {
+    // create a tag for our ephemeral public key, keyed by the network ID
+    const authTag = Buffer.alloc(sodium.crypto_auth_BYTES)
+    sodium.crypto_auth(authTag, handshakeState.local.ephPk, handshakeState.netId)
+    // send our ephemeral public key with the auth tag
+    socket.write(Buffer.concat([authTag, handshakeState.local.ephPk]))
+  }
+
   // handle a chunk of bytes recieved on the socket
-  socket.on('data', function handleRawChunk (chunk, enc, done) {
+  socket.on('data', function handleRawChunk (chunk) {
     // both functions return any data that wasn't used
     // since at the end of, e.g. a handshake, there might
     // be authenticated data in the same chunk (maybe... not sure actually)
     if (handshakeState.done) {
-      buf = handleAuthenticatedChunk(chunk, enc, done)
+      buf = handleAuthenticatedChunk(chunk)
     } else {
-      buf = handleHandshakeChunk(chunk, enc, done)
+      buf = handleHandshakeChunk(chunk)
     }
-
-    done()
   })
 
   function handleHandshakeChunk (chunk, enc, done) {
@@ -67,7 +74,7 @@ function Protocol (socket, init, opts) {
     }
 
     // we now have enough to complete a step
-    if (receivedBytes === stepSizes[step]) {
+    if (handshakeState.receivedBytes === stepSizes[step]) {
       if (init) handleClientHandshakeStep()
       else handleServerHandshakeStep()
 
@@ -86,7 +93,7 @@ function Protocol (socket, init, opts) {
       case 0: {
         const remoteAuthTag = buf.slice(0, 32)
         handshakeState.remote.ephPk = buf.slice(32)
-        const valid = sodium.crypto_auth_verify(remoteAuthTag, handshakeState.remote.ephPk, netId)
+        const valid = sodium.crypto_auth_verify(remoteAuthTag, handshakeState.remote.ephPk, handshakeState.netId)
         if (!valid) {
           socket.end()
         }
@@ -96,7 +103,7 @@ function Protocol (socket, init, opts) {
         sodium.crypto_sign_ed25519_pk_to_curve25519(remoteLongTermPkCurve, handshakeState.remote.public)
 
         // derive 2 shared secrets and hash the first
-        sodium.crypto_scalarmult(handshakeState.local.sharedSecret0, handshakeState.ephSk, handshakeState.remote.ephPk)
+        sodium.crypto_scalarmult(handshakeState.local.sharedSecret0, handshakeState.local.ephSk, handshakeState.remote.ephPk)
         sodium.crypto_scalarmult(handshakeState.local.sharedSecret1, handshakeState.local.ephSk, remoteLongTermPkCurve)
         sodium.crypto_generichash(handshakeState.local.sharedSecret0Hash, handshakeState.local.sharedSecret0)
 
@@ -252,7 +259,10 @@ function Protocol (socket, init, opts) {
     }
   }
 
-  function handleAuthenticatedChunk (chunk, enc, done) {}
+  function handleAuthenticatedChunk (chunk) {
+  }
 
   return this
 }
+
+module.exports = { Protocol }
