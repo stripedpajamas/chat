@@ -58,7 +58,7 @@ function encryption (stream, globalState) {
   const transform = new Transform({})
   transform._transform = function (chunk, enc, done) {
     if (!globalState.key) {
-      done('no keys')
+      return done('no keys')
     }
 
     let chIdx = 0
@@ -114,6 +114,14 @@ server.on('connection', (socket) => {
   stream.on('data', (ch) => {
     process.stdout.write(ch)
   })
+
+  process.stdin.on('data', (ch) => {
+    if (ch[0] === 0x0a) {
+      console.error('hi')
+      stream.write('hello world')
+    }
+  })
+  process.stdin.resume()
 })
 
 server.listen(6969)
