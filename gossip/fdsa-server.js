@@ -21,7 +21,9 @@ server.on('connection', (socket) => {
     keys,
     netId,
   })
-  socket.pipe(process.stdout)
+  protocol.messages.on('data', (data) => {
+    process.stdout.write(data)
+  })
 })
 
 server.listen(6969)

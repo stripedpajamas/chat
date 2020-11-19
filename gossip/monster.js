@@ -1,9 +1,14 @@
+const { EventEmitter } = require('events')
 const sodium = require('sodium-native')
+
+class ProtocolMessages extends EventEmitter {}
 
 // socket is duplex stream; init is whether or not we initiated the connection
 function Protocol (socket, init, opts) {
   // a place to buffer incoming data (since it comes in chunks)
   let buf = Buffer.alloc(0)
+
+  const out = new ProtocolMessages()
 
   const handshakeState = {
     done: false,
@@ -33,7 +38,18 @@ function Protocol (socket, init, opts) {
       sig: null
     }
   }
-  const authState = {}
+  const authState = {
+    receivedHeader: false,
+    bodyMac: null,
+    receivedBytes: 0,
+    expectedBytes: 0,
+    sendKey: Buffer.alloc(sodium.crypto_generichash_BYTES),
+    sendNonce: Buffer.alloc(sodium.crypto_auth_BYTES),
+    receiveKey: Buffer.alloc(sodium.crypto_generichash_BYTES),
+    receiveNonce: Buffer.alloc(sodium.crypto_auth_BYTES),
+    local: {},
+    remote: {},
+  }
 
   // init ephemeral keys for this session
   sodium.crypto_box_keypair(handshakeState.local.ephPk, handshakeState.local.ephSk)
@@ -50,13 +66,10 @@ function Protocol (socket, init, opts) {
 
   // handle a chunk of bytes recieved on the socket
   socket.on('data', function handleRawChunk (chunk) {
-    // both functions return any data that wasn't used
-    // since at the end of, e.g. a handshake, there might
-    // be authenticated data in the same chunk (maybe... not sure actually)
     if (handshakeState.done) {
-      buf = handleAuthenticatedChunk(chunk)
+      handleAuthenticatedChunk(chunk)
     } else {
-      buf = handleHandshakeChunk(chunk)
+      handleHandshakeChunk(chunk)
     }
   })
 
@@ -84,7 +97,10 @@ function Protocol (socket, init, opts) {
       buf = Buffer.alloc(0)
     }
 
-    return unused
+    // put whatever we didn't use into our buf
+    if (unused.length) {
+      buf = unused
+    }
   }
 
   function handleClientHandshakeStep () {
@@ -160,6 +176,7 @@ function Protocol (socket, init, opts) {
         }
 
         handshakeState.done = true
+        computeAuthState()
         break
       }
     }
@@ -254,14 +271,166 @@ function Protocol (socket, init, opts) {
         socket.write(payload)
 
         handshakeState.done = true
+        computeAuthState()
         break
       }
     }
   }
 
   function handleAuthenticatedChunk (chunk) {
+    let unused = Buffer.alloc(0)
+    if (!authState.receivedHeader) { // pull in the 34 byte header
+      if (authState.receivedBytes < 34) {
+        const slice = chunk.slice(0, 34 - authState.receivedBytes)
+        buf = Buffer.concat([buf, slice])
+        if (chunk.length > slice.length) {
+          unused = chunk.slice(slice.length)
+        }
+        authState.receivedBytes += slice.length
+      }
+
+      if (authState.receivedBytes === 34) {
+        const headerPlaintext = Buffer.alloc(buf.length - sodium.crypto_secretbox_MACBYTES)
+        const headerNonce = nextReceiveNonce()
+        const decrypted = sodium.crypto_secretbox_open_easy(headerPlaintext, buf, headerNonce, authState.receiveKey)
+        if (!decrypted) {
+          socket.end()
+          return
+        }
+
+        const bodyLength = headerPlaintext.readIntBE(0, 2)
+
+        authState.receivedHeader = true
+        authState.expectedBytes = bodyLength
+        authState.bodyMac = headerPlaintext.slice(2)
+        buf = Buffer.alloc(0)
+
+        // reset received bytes in preparation for the body
+        authState.receivedBytes = 0
+      }
+    } else { // we have header; get the body
+      if (authState.receivedBytes < authState.expectedBytes) {
+        const slice = chunk.slice(0, authState.expectedBytes - authState.receivedBytes)
+        buf = Buffer.concat([buf, slice])
+        if (chunk.length > slice.length) {
+          unused = chunk.slice(slice.length)
+        }
+        authState.receivedBytes += slice.length
+      }
+
+      if (authState.receivedBytes === authState.expectedBytes) { // have the full body
+        const fullBody = Buffer.concat([authState.bodyMac, buf])
+
+        const bodyPlaintext = Buffer.alloc(fullBody.length - sodium.crypto_secretbox_MACBYTES)
+        const bodyNonce = nextReceiveNonce()
+        const decrypted = sodium.crypto_secretbox_open_easy(bodyPlaintext, fullBody, bodyNonce, authState.receiveKey)
+        if (!decrypted) {
+          socket.end()
+          return
+        }
+
+        // emit the decrypted message
+        out.emit('data', bodyPlaintext)
+
+        // reset state since we've just finished a complete transaction
+        authState.receivedBytes = 0
+        authState.expectedBytes = 0
+        authState.bodyMac = null
+        authState.receivedHeader = false
+      }
+    }
+
+    // recurse with any unused bytes
+    if (unused.length) {
+      handleAuthenticatedChunk(unused)
+    }
   }
 
+  function computeAuthState () {
+    // key = hash(hash(hash(netId || ss0 || ss1 || ss2)) || remotePk)
+    sodium.crypto_generichash(authState.sendKey, Buffer.concat([
+      handshakeState.netId,
+      handshakeState.local.sharedSecret0,
+      handshakeState.local.sharedSecret1,
+      handshakeState.local.sharedSecret2
+    ]))
+    sodium.crypto_generichash(authState.sendKey, authState.sendKey)
+    sodium.crypto_generichash(authState.sendKey, Buffer.concat([
+      authState.sendKey,
+      handshakeState.remote.public
+    ]))
+    sodium.crypto_generichash(authState.receiveKey, Buffer.concat([
+      handshakeState.netId,
+      handshakeState.local.sharedSecret0,
+      handshakeState.local.sharedSecret1,
+      handshakeState.local.sharedSecret2
+    ]))
+    sodium.crypto_generichash(authState.receiveKey, authState.receiveKey)
+    sodium.crypto_generichash(authState.receiveKey, Buffer.concat([
+      authState.receiveKey,
+      handshakeState.local.public
+    ]))
+
+    sodium.crypto_auth(authState.sendNonce, handshakeState.remote.ephPk, handshakeState.netId)
+    authState.sendNonce = authState.sendNonce.slice(0, 24)
+    sodium.crypto_auth(authState.receiveNonce, handshakeState.local.ephPk, handshakeState.netId)
+    authState.receiveNonce = authState.receiveNonce.slice(0, 24)
+
+    authState.remote.public = handshakeState.remote.public
+    authState.local.public = handshakeState.local.public
+    authState.local.secret = handshakeState.local.secret
+
+    out.emit('authenticated')
+  }
+
+  function nextSendNonce () {
+    const nonce = Buffer.from(authState.sendNonce)
+    sodium.sodium_increment(authState.sendNonce)
+
+    return nonce
+  }
+
+  function nextReceiveNonce () {
+    const nonce = Buffer.from(authState.receiveNonce)
+    sodium.sodium_increment(authState.receiveNonce)
+
+    return nonce
+  }
+
+  // a function that encrypts and packages some data
+  // and then sends it to the remote peer
+  function send (bytes) {
+    // get some nonces
+    const headerNonce = nextSendNonce()
+    const bodyNonce = nextSendNonce()
+
+    // put the body in a box
+    let bodyCiphertext = Buffer.alloc(bytes.length + sodium.crypto_secretbox_MACBYTES)
+    sodium.crypto_secretbox_easy(bodyCiphertext, bytes, bodyNonce, authState.sendKey)
+
+    // slice off the mac 
+    const mac = bodyCiphertext.slice(0, 16)
+    bodyCiphertext = bodyCiphertext.slice(16)
+
+    // encode the body length into 2 big endian bytes
+    const bodyLength = Buffer.alloc(2)
+    bodyLength.writeIntBE(bytes.length, 0, 2)
+
+    // the header is the body length || body mac, put inside its own secret box
+    const header = Buffer.concat([bodyLength, mac])
+    const headerCiphertext = Buffer.alloc(header.length + sodium.crypto_secretbox_MACBYTES)
+    sodium.crypto_secretbox_easy(headerCiphertext, header, headerNonce, authState.sendKey)
+
+    // the final payload: enc(header) || enc(body)
+    const payload = Buffer.concat([headerCiphertext, bodyCiphertext])
+
+    // send it
+    socket.write(payload)
+  }
+
+  // TESTING
+  this.send = send
+  this.messages = out
   return this
 }
 

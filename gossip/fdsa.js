@@ -9,8 +9,6 @@ const keys = {
 }
 sodium.crypto_sign_keypair(keys.public, keys.secret)
 
-console.error('Client public:', keys.public.toString('hex'))
-
 const netId = Buffer.alloc(32)
 netId.fill(7)
 
@@ -23,5 +21,10 @@ const protocol = Protocol(socket, true, {
   }
 })
 
-socket.pipe(process.stdout)
+protocol.messages.on('data', (data) => {
+  process.stdout.write(data)
+})
 
+protocol.messages.on('authenticated', () => {
+  protocol.send(Buffer.from('hello world'))
+})
