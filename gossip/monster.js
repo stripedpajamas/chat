@@ -50,6 +50,10 @@ function Protocol (socket, init, opts) {
     local: {},
     remote: {},
   }
+  const messageState = {
+    local: opts.node, // pointer to the local Peer node
+    reqs: new Map(), // a map of reqId->params
+  }
 
   // init ephemeral keys for this session
   sodium.crypto_box_keypair(handshakeState.local.ephPk, handshakeState.local.ephSk)
@@ -428,8 +432,44 @@ function Protocol (socket, init, opts) {
     socket.write(payload)
   }
 
+  // send req; wait for response; return response
+  function requestSync (id) {
+    return new Promise((resolve, reject) => {
+      const reqId = Math.random().toString(36).slice(2)
+      messageState.reqs.set(reqId, [id])
+
+      // [type, reqId, method, args]
+      // can use any serialization here; JSON.stringify for now
+      const payload = Buffer.from(JSON.stringify([1, reqId, 'sync', [id]]))
+
+      // handle timeouts
+      setTimeout(() => reject(new Error(`${reqId} timed out waiting for response`)), 10000)
+
+      send(payload)
+
+      function handleResponse (response) {
+        try {
+          const res = JSON.parse(response)
+
+          // looking for type 2 (response) and matching reqId
+          if (res[0] !== 2 || res[1] !== reqId) return
+
+          out.off('data', handleResponse)
+
+          // found it
+          messageState.reqs.delete(reqId)
+          resolve(res)
+        } catch {}
+      }
+
+      // listen for responses
+      out.on('data', handleResponse)
+    })
+  }
+
   // TESTING
   this.send = send
+  this.requestSync = requestSync
   this.messages = out
   return this
 }

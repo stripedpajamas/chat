@@ -22,7 +22,21 @@ server.on('connection', (socket) => {
     netId,
   })
   protocol.messages.on('data', (data) => {
-    process.stdout.write(data)
+    try {
+      const msg = JSON.parse(data)
+      console.error(msg)
+
+      const [type, msgId, method, args] = msg
+      protocol.send(
+        Buffer.from(
+          JSON.stringify(
+            [2, msgId, null, 'papa johns']
+          )
+        )
+      )
+    } catch (e) {
+      console.error(e)
+    }
   })
 })
 

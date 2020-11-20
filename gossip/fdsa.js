@@ -21,10 +21,11 @@ const protocol = Protocol(socket, true, {
   }
 })
 
-protocol.messages.on('data', (data) => {
-  process.stdout.write(data)
-})
-
-protocol.messages.on('authenticated', () => {
-  protocol.send(Buffer.from('hello world'))
+protocol.messages.once('authenticated', async () => {
+  try {
+    const res = await protocol.requestSync('pete')
+    console.error({ res })
+  } catch (e) {
+    console.error(e)
+  }
 })
